@@ -1,0 +1,8 @@
+{
+  "languages": {
+    "Go": {
+      "language_servers": ["gopls"],
+      "format_on_save": "off"
+    }
+  }
+}

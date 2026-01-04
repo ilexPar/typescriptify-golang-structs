@@ -40,6 +40,60 @@ type Person struct {
 	Dummy     Dummy     `json:"a"`
 }
 
+type Business struct {
+	Address *Address `json:"address"`
+}
+
+type AddressableSubjects interface {
+	Person | Business
+}
+
+type Subject[T AddressableSubjects] struct {
+	Info T `json:"info" ts_type:"T"`
+}
+
+func TestTypescriptifyWithGenerics(t *testing.T) {
+	// t.Parallel()
+	converter := New()
+
+	converter.AddGenericType(
+		Subject[Person]{},
+		[]ConstrainInput{{
+			Name: "AddressableSubjects",
+			Members: []any{Person{}, Business{}},
+		}},
+	)
+	converter.CreateInterface = true
+	converter.DontExport = true
+	converter.BackupDir = ""
+
+	desiredResult := `interface Dummy {
+        something: string;
+}
+interface Address {
+        duration: number;
+        text?: string;
+}
+interface Person {
+        name: string;
+        nicknames: string[];
+		addresses: Address[];
+		address?: Address;
+		metadata: {[key:string]:string};
+		friends: Person[];
+        a: Dummy;
+}
+interface Business {
+	address?: Address;
+}
+type AddressableSubjects = Person | Business;
+interface Subject<T extends AddressableSubjects> {
+	info: T;
+}`
+
+	testConverter(t, converter, false, desiredResult, nil)
+}
+
 func TestTypescriptifyWithTypes(t *testing.T) {
 	t.Parallel()
 	converter := New()
@@ -833,7 +887,7 @@ func TestMaps(t *testing.T) {
       export class API_Address {
           duration: number;
           text?: string;
-      
+
           constructor(source: any = {}) {
               if ('string' === typeof source) source = JSON.parse(source);
               this.duration = source["duration"];
@@ -909,7 +963,7 @@ func TestAnonymousPtr(t *testing.T) {
 	desiredResult := `
       export class PersonWithPtrName {
           name: string;
-      
+
           constructor(source: any = {}) {
               if ('string' === typeof source) source = JSON.parse(source);
               this.name = source["name"];
@@ -938,7 +992,7 @@ const converter = new Converter();
 class Address {
     street: string;
     number: number;
-    
+
     constructor(a: any) {
         this.street = a["street"];
         this.number = a["number"];
@@ -983,7 +1037,7 @@ func TestIgnoredPTR(t *testing.T) {
 	desiredResult := `
       export class PersonWithIgnoredPtr {
           name: string;
-      
+
           constructor(source: any = {}) {
               if ('string' === typeof source) source = JSON.parse(source);
               this.name = source["name"];

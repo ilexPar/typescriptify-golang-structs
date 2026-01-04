@@ -78,6 +78,33 @@ type enumElement struct {
 	name  string
 }
 
+var GenericVarNames = []string{
+	"T",
+	"U",
+	"V",
+	"W",
+	"X",
+	"Y",
+	"Z",
+	"E",
+	"K",
+}
+
+type GenericConstraint struct {
+	Name string
+	Members []string
+}
+
+type ConstrainInput struct {
+	Name string
+	Members []any
+}
+
+type GenericType struct {
+	StructType
+	Constraints []GenericConstraint
+}
+
 type TypeScriptify struct {
 	Prefix            string
 	Suffix            string
@@ -93,10 +120,11 @@ type TypeScriptify struct {
 	customCodeAfter   []string
 	silent            bool
 
-	structTypes []StructType
-	enumTypes   []EnumType
-	enums       map[reflect.Type][]enumElement
-	kinds       map[reflect.Kind]string
+	structTypes  []StructType
+	enumTypes    []EnumType
+	genericTypes map[string]GenericType
+	enums        map[reflect.Type][]enumElement
+	kinds        map[reflect.Kind]string
 
 	fieldTypeOptions map[reflect.Type]TypeOptions
 
@@ -252,6 +280,34 @@ func (t *TypeScriptify) Add(obj interface{}) *TypeScriptify {
 	return t
 }
 
+func (t *TypeScriptify) AddGenericType(instance any, constraints []ConstrainInput) *TypeScriptify {
+	if t.genericTypes == nil {
+		t.genericTypes = make(map[string]GenericType)
+	}
+	if instance == nil || len(constraints) == 0 {
+		panic("generic variants and constraints cannot be empty")
+	}
+
+	genericType := GenericType{}
+	genericType.Type = reflect.TypeOf(instance)
+	genericType.Constraints = []GenericConstraint{}
+
+	for _, constrain := range constraints {
+		c := GenericConstraint{Name: constrain.Name}
+		for _, member := range constrain.Members {
+			mType := reflect.TypeOf(member)
+			c.Members = append(c.Members, mType.Name())
+			t.Add(mType)
+		}
+		genericType.Constraints = append(genericType.Constraints, c)
+	}
+
+	nameRaw := genericType.Type.Name()
+	name := strings.Split(nameRaw, "[")[0]
+	t.genericTypes[name] = genericType
+	return t
+}
+
 func (t *TypeScriptify) AddType(typeOf reflect.Type) *TypeScriptify {
 	t.structTypes = append(t.structTypes, StructType{Type: typeOf})
 	return t
@@ -379,6 +435,14 @@ func (t *TypeScriptify) Convert(customCode map[string]string) (string, error) {
 		result += "\n" + strings.Trim(typeScriptCode, " "+t.Indent+"\r\n")
 	}
 
+	for _, genericTyp := range t.genericTypes {
+		typeScriptCode, err := t.convertGenericType(depth, genericTyp, customCode)
+		if err != nil {
+			return "", err
+		}
+		result += "\n" + strings.Trim(typeScriptCode, " "+t.Indent+"\r\n")
+	}
+
 	if len(t.customCodeAfter) > 0 {
 		result += "\n"
 		for _, code := range t.customCodeAfter {
@@ -386,6 +450,31 @@ func (t *TypeScriptify) Convert(customCode map[string]string) (string, error) {
 		}
 		result += "\n"
 	}
+
+	return result, nil
+}
+
+func (t *TypeScriptify) convertGenericType(depth int, gen GenericType, customCode map[string]string) (string, error) {
+	result := ""
+
+	for _, constrain := range gen.Constraints {
+		membersStr := ""
+		constrainCount := len(constrain.Members)
+		for mId, member := range constrain.Members {
+			if constrainCount > 1 && mId != constrainCount-1 {
+				membersStr += fmt.Sprintf("%s | ", member)
+				continue
+			}
+			membersStr += fmt.Sprintf("%s;", member)
+		}
+		result += fmt.Sprintf("type %s = %s\n", constrain.Name, membersStr)
+	}
+
+	tsCode, err := t.convertType(depth, gen.Type, customCode)
+	if err != nil {
+		return result, err
+	}
+	result += tsCode
 
 	return result, nil
 }
@@ -412,7 +501,7 @@ func loadCustomCode(fileName string) (map[string]string, error) {
 	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmedLine, "//[") && strings.HasSuffix(trimmedLine, ":]") {
-			currentName = strings.Replace(strings.Replace(trimmedLine, "//[", "", -1), ":]", "", -1)
+			currentName = strings.ReplaceAll(strings.ReplaceAll(trimmedLine, "//[", ""), ":]", "")
 			currentValue = ""
 		} else if trimmedLine == "//[end]" {
 			result[currentName] = strings.TrimRight(currentValue, " \t\r\n")
@@ -478,9 +567,6 @@ func (t TypeScriptify) ConvertToFile(fileName string) error {
 		return err
 	}
 	if _, err := f.WriteString(converted); err != nil {
-		return err
-	}
-	if err != nil {
 		return err
 	}
 
@@ -588,6 +674,27 @@ func (t *TypeScriptify) getJSONFieldName(field reflect.StructField, isPtr bool) 
 	return jsonFieldName
 }
 
+func (t *TypeScriptify) solveEntityName(typeOf reflect.Type) string {
+	name := typeOf.Name()
+	if strings.Contains(name, "[") {
+		nameParts := strings.Split(name, "[")
+		gen := t.genericTypes[nameParts[0]]
+		constrains := ""
+		for cId, cons := range gen.Constraints {
+			if cId > len(GenericVarNames) - 1 {
+				panic("run out of generic names to use")
+			}
+			constrains += fmt.Sprintf("%s extends %s", GenericVarNames[cId], cons.Name)
+			if len(gen.Constraints) > 1 && cId < len(gen.Constraints) - 1 {
+				constrains += ", "
+			}
+		}
+		name = fmt.Sprintf("%s<%s>", nameParts[0], constrains)
+	}
+
+	return t.Prefix + name + t.Suffix
+}
+
 func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode map[string]string) (string, error) {
 	if _, found := t.alreadyConverted[typeOf]; found { // Already converted
 		return "", nil
@@ -596,7 +703,7 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 
 	t.alreadyConverted[typeOf] = true
 
-	entityName := t.Prefix + typeOf.Name() + t.Suffix
+	entityName := t.solveEntityName(typeOf)
 	result := ""
 	if t.CreateInterface {
 		result += fmt.Sprintf("interface %s {\n", entityName)
@@ -818,7 +925,7 @@ func (t *typeScriptClassBuilder) AddSimpleField(fieldName string, field reflect.
 			t.addInitializerFieldLine(strippedFieldName, fmt.Sprintf("source[\"%s\"]", strippedFieldName))
 		} else {
 			val := fmt.Sprintf(`source["%s"]`, strippedFieldName)
-			expression := strings.Replace(opts.TSTransform, "__VALUE__", val, -1)
+			expression := strings.ReplaceAll(opts.TSTransform, "__VALUE__", val)
 			t.addInitializerFieldLine(strippedFieldName, expression)
 		}
 		return nil
