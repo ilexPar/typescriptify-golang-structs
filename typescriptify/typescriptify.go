@@ -676,20 +676,19 @@ func (t *TypeScriptify) getJSONFieldName(field reflect.StructField, isPtr bool) 
 
 func (t *TypeScriptify) solveEntityName(typeOf reflect.Type) string {
 	name := typeOf.Name()
+
 	if strings.Contains(name, "[") {
 		nameParts := strings.Split(name, "[")
 		gen := t.genericTypes[nameParts[0]]
-		constrains := ""
+		constrains := []string{}
 		for cId, cons := range gen.Constraints {
 			if cId > len(GenericVarNames) - 1 {
 				panic("run out of generic names to use")
 			}
-			constrains += fmt.Sprintf("%s extends %s", GenericVarNames[cId], cons.Name)
-			if len(gen.Constraints) > 1 && cId < len(gen.Constraints) - 1 {
-				constrains += ", "
-			}
+			def := fmt.Sprintf("%s extends %s", GenericVarNames[cId], cons.Name)
+			constrains = append(constrains, def)
 		}
-		name = fmt.Sprintf("%s<%s>", nameParts[0], constrains)
+		name = fmt.Sprintf("%s<%s>", nameParts[0], strings.Join(constrains, ", "))
 	}
 
 	return t.Prefix + name + t.Suffix
