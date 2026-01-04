@@ -87,8 +87,6 @@ var GenericVarNames = []string{
 	"X",
 	"Y",
 	"Z",
-	"E",
-	"K",
 }
 
 type GenericConstraint struct {
