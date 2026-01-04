@@ -92,7 +92,7 @@ var GenericVarNames = []string{
 
 type GenericConstraint struct {
 	Name string
-	Members []string
+	Members []reflect.Type
 }
 
 type ConstrainInput struct {
@@ -296,8 +296,10 @@ func (t *TypeScriptify) AddGenericType(instance any, constraints []ConstrainInpu
 		c := GenericConstraint{Name: constrain.Name}
 		for _, member := range constrain.Members {
 			mType := reflect.TypeOf(member)
-			c.Members = append(c.Members, mType.Name())
-			t.Add(mType)
+			c.Members = append(c.Members, mType)
+			if mType.Kind() == reflect.Struct || mType.Kind() == reflect.Interface {
+				t.Add(mType)
+			}
 		}
 		genericType.Constraints = append(genericType.Constraints, c)
 	}
@@ -458,16 +460,15 @@ func (t *TypeScriptify) convertGenericType(depth int, gen GenericType, customCod
 	result := ""
 
 	for _, constrain := range gen.Constraints {
-		membersStr := ""
-		constrainCount := len(constrain.Members)
-		for mId, member := range constrain.Members {
-			if constrainCount > 1 && mId != constrainCount-1 {
-				membersStr += fmt.Sprintf("%s | ", member)
-				continue
+		memberList := []string{}
+		for _, member := range constrain.Members {
+			if member.Kind() == reflect.Struct || member.Kind() == reflect.Interface {
+				memberList = append(memberList, member.Name())
+			} else {
+				memberList = append(memberList, t.kinds[member.Kind()])
 			}
-			membersStr += fmt.Sprintf("%s;", member)
 		}
-		result += fmt.Sprintf("type %s = %s\n", constrain.Name, membersStr)
+		result += fmt.Sprintf("type %s = %s;\n", constrain.Name, strings.Join(memberList, " | "))
 	}
 
 	tsCode, err := t.convertType(depth, gen.Type, customCode)
