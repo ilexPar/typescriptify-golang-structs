@@ -60,7 +60,7 @@ func TestTypescriptifyWithGenerics(t *testing.T) {
 		Subject[Person]{},
 		[]ConstrainInput{{
 			Name: "AddressableSubjects",
-			Members: []any{Person{}, Business{}, 6},
+			Members: []any{Person{}, Business{}, 6, map[string]int{}},
 		}},
 	)
 	converter.CreateInterface = true
@@ -86,7 +86,7 @@ interface Person {
 interface Business {
 	address?: Address;
 }
-type AddressableSubjects = Person | Business | number;
+type AddressableSubjects = Person | Business | number | {[key: string]: number};
 interface Subject<T extends AddressableSubjects> {
 	info: T;
 }`

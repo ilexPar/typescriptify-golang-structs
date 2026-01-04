@@ -3,6 +3,7 @@ package typescriptify
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"reflect"
@@ -132,32 +133,30 @@ type TypeScriptify struct {
 	alreadyConverted map[reflect.Type]bool
 }
 
+var primitiveKindsMapping = map[reflect.Kind]string {
+	reflect.Bool: "boolean",
+	reflect.Interface: "any",
+	reflect.Int: "number",
+	reflect.Int8: "number",
+	reflect.Int16: "number",
+	reflect.Int32: "number",
+	reflect.Int64: "number",
+	reflect.Uint: "number",
+	reflect.Uint8: "number",
+	reflect.Uint16: "number",
+	reflect.Uint32: "number",
+	reflect.Uint64: "number",
+	reflect.Float32: "number",
+	reflect.Float64: "number",
+	reflect.String: "string",
+}
+
 func New() *TypeScriptify {
 	result := new(TypeScriptify)
 	result.Indent = "\t"
 	result.BackupDir = "."
 
-	kinds := make(map[reflect.Kind]string)
-
-	kinds[reflect.Bool] = "boolean"
-	kinds[reflect.Interface] = "any"
-
-	kinds[reflect.Int] = "number"
-	kinds[reflect.Int8] = "number"
-	kinds[reflect.Int16] = "number"
-	kinds[reflect.Int32] = "number"
-	kinds[reflect.Int64] = "number"
-	kinds[reflect.Uint] = "number"
-	kinds[reflect.Uint8] = "number"
-	kinds[reflect.Uint16] = "number"
-	kinds[reflect.Uint32] = "number"
-	kinds[reflect.Uint64] = "number"
-	kinds[reflect.Float32] = "number"
-	kinds[reflect.Float64] = "number"
-
-	kinds[reflect.String] = "string"
-
-	result.kinds = kinds
+	result.kinds = maps.Clone(primitiveKindsMapping)
 
 	result.Indent = "    "
 	result.CreateFromMethod = false
@@ -297,7 +296,8 @@ func (t *TypeScriptify) AddGenericType(instance any, constraints []ConstrainInpu
 		for _, member := range constrain.Members {
 			mType := reflect.TypeOf(member)
 			c.Members = append(c.Members, mType)
-			if mType.Kind() == reflect.Struct || mType.Kind() == reflect.Interface {
+			kind := mType.Kind()
+			if kind == reflect.Struct || kind == reflect.Interface {
 				t.Add(mType)
 			}
 		}
@@ -315,33 +315,39 @@ func (t *TypeScriptify) AddType(typeOf reflect.Type) *TypeScriptify {
 	return t
 }
 
-func (t *typeScriptClassBuilder) AddMapField(fieldName string, field reflect.StructField) {
-	keyType := field.Type.Key()
-	valueType := field.Type.Elem()
-	valueTypeName := valueType.Name()
-	if name, ok := t.types[valueType.Kind()]; ok {
-		valueTypeName = name
-	}
-	if valueType.Kind() == reflect.Array || valueType.Kind() == reflect.Slice {
-		valueTypeName = valueType.Elem().Name() + "[]"
-	}
-	if valueType.Kind() == reflect.Ptr {
-		valueTypeName = valueType.Elem().Name()
-	}
-	strippedFieldName := strings.ReplaceAll(fieldName, "?", "")
+func getMapTsType(val reflect.Type, prefix, suffix string) (string, string) {
+	value := ""
+	valueElem := val.Elem()
+	kind := valueElem.Kind()
+	key := val.Key().Name()
 
-	keyTypeStr := keyType.Name()
-	// Key should always be string, no need for this:
-	// _, isSimple := t.types[keyType.Kind()]
-	// if !isSimple {
-	// 	keyTypeStr = t.prefix + keyType.Name() + t.suffix
-	// }
+	switch kind {
+		case reflect.Array, reflect.Slice:
+			value = valueElem.Name() + "[]"
+		case reflect.Struct:
+			value = valueElem.Name()
+		default:
+			value = primitiveKindsMapping[kind]
+	}
+
+	if kind == reflect.Struct {
+		value = prefix + value + suffix
+		return fmt.Sprintf("{[key: %s]: %s}", key, value), value
+	} else {
+		return fmt.Sprintf("{[key: %s]: %s}", key, value), value
+	}
+}
+
+func (t *typeScriptClassBuilder) AddMapField(fieldName string, field reflect.StructField) {
+	valueType := field.Type.Elem()
+	strippedFieldName := strings.ReplaceAll(fieldName, "?", "")
+	mapTypeStr, valueTypeName := getMapTsType(field.Type, t.prefix, t.suffix)
 
 	if valueType.Kind() == reflect.Struct {
-		t.fields = append(t.fields, fmt.Sprintf("%s%s: {[key: %s]: %s};", t.indent, fieldName, keyTypeStr, t.prefix+valueTypeName))
-		t.constructorBody = append(t.constructorBody, fmt.Sprintf("%s%sthis.%s = this.convertValues(source[\"%s\"], %s, true);", t.indent, t.indent, strippedFieldName, strippedFieldName, t.prefix+valueTypeName+t.suffix))
+		t.fields = append(t.fields, fmt.Sprintf("%s%s: %s;", t.indent, fieldName, mapTypeStr))
+		t.constructorBody = append(t.constructorBody, fmt.Sprintf("%s%sthis.%s = this.convertValues(source[\"%s\"], %s, true);", t.indent, t.indent, strippedFieldName, strippedFieldName, valueTypeName))
 	} else {
-		t.fields = append(t.fields, fmt.Sprintf("%s%s: {[key: %s]: %s};", t.indent, fieldName, keyTypeStr, valueTypeName))
+		t.fields = append(t.fields, fmt.Sprintf("%s%s: %s;", t.indent, fieldName, mapTypeStr))
 		t.constructorBody = append(t.constructorBody, fmt.Sprintf("%s%sthis.%s = source[\"%s\"];", t.indent, t.indent, strippedFieldName, strippedFieldName))
 	}
 }
@@ -464,6 +470,9 @@ func (t *TypeScriptify) convertGenericType(depth int, gen GenericType, customCod
 		for _, member := range constrain.Members {
 			if member.Kind() == reflect.Struct || member.Kind() == reflect.Interface {
 				memberList = append(memberList, member.Name())
+			} else if member.Kind() == reflect.Map {
+				mapMember, _ := getMapTsType(member, t.Prefix, t.Suffix)
+				memberList = append(memberList, mapMember)
 			} else {
 				memberList = append(memberList, t.kinds[member.Kind()])
 			}
