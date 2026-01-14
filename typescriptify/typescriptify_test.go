@@ -35,7 +35,7 @@ type Person struct {
 	Nicknames []string  `json:"nicknames"`
 	Addresses []Address `json:"addresses"`
 	Address   *Address  `json:"address"`
-	Metadata  string    `json:"metadata" ts_type:"{[key:string]:string}" ts_transform:"JSON.parse(__VALUE__ || \"{}\")"`
+	Metadata  string    `json:"metadata" ts_type:"{[key: string]: string}" ts_transform:"JSON.parse(__VALUE__ || \"{}\")"`
 	Friends   []*Person `json:"friends"`
 	Dummy     Dummy     `json:"a"`
 }
@@ -51,6 +51,7 @@ type AddressableSubjects interface {
 type Subject[T AddressableSubjects, U int | string] struct {
 	Info T `json:"info" ts_type:"T"`
 	Id   U `json:"id" ts_type:"U"`
+	ASD map[string]*Person
 }
 
 func TestTypescriptifyWithGenerics(t *testing.T) {
@@ -84,7 +85,7 @@ interface Person {
         nicknames: string[];
 		addresses: Address[];
 		address?: Address;
-		metadata: {[key:string]:string};
+		metadata: {[key: string]: string};
 		friends: Person[];
         a: Dummy;
 }
@@ -96,6 +97,7 @@ type SubjectId = number | string;
 interface Subject<T extends AddressableSubjects, U extends SubjectId> {
 	info: T;
 	id: U;
+	ASD: {[key: string]: Person};
 }`
 
 	testConverter(t, converter, false, desiredResult, nil)
@@ -121,7 +123,7 @@ export class Person {
         nicknames: string[];
 		addresses: Address[];
 		address?: Address;
-		metadata: {[key:string]:string};
+		metadata: {[key: string]: string};
 		friends: Person[];
         a: Dummy;
 }`
@@ -159,7 +161,7 @@ export class Person {
     nicknames: string[];
     addresses: Address[];
     address?: Address;
-    metadata: {[key:string]:string};
+    metadata: {[key: string]: string};
     friends: Person[];
     a: Dummy;
 }
@@ -194,7 +196,7 @@ export class Person {
         nicknames: string[];
 		addresses: Address[];
 		address?: Address;
-		metadata: {[key:string]:string};
+		metadata: {[key: string]: string};
 		friends: Person[];
         a: Dummy;
 }`
@@ -223,7 +225,7 @@ class Person {
         nicknames: string[];
 		addresses: Address[];
 		address?: Address;
-		metadata: {[key:string]:string};
+		metadata: {[key: string]: string};
 		friends: Person[];
         a: Dummy;
 }`
@@ -252,7 +254,7 @@ interface Person {
         nicknames: string[];
 		addresses: Address[];
 		address?: Address;
-		metadata: {[key:string]:string};
+		metadata: {[key: string]: string};
 		friends: Person[];
         a: Dummy;
 }`
@@ -280,7 +282,7 @@ export class Person {
 		nicknames: string[];
 		addresses: Address[];
 		address?: Address;
-		metadata: {[key:string]:string};
+		metadata: {[key: string]: string};
 		friends: Person[];
         a: Dummy;
 }`
@@ -321,7 +323,7 @@ class test_Person_test {
     nicknames: string[];
     addresses: test_Address_test[];
     address?: test_Address_test;
-    metadata: {[key:string]:string};
+    metadata: {[key: string]: string};
     friends: test_Person_test[];
 	a: test_Dummy_test;
 
@@ -856,7 +858,7 @@ export class Person {
     nicknames: string[];
     addresses: Address[];
     address?: Address;
-    metadata: {[key:string]:string};
+    metadata: {[key: string]: string};
     friends: Person[];
     a: Dummy;
 
