@@ -316,6 +316,11 @@ func (t *TypeScriptify) AddType(typeOf reflect.Type) *TypeScriptify {
 func getMapTsType(val reflect.Type, prefix, suffix string) (string, string) {
 	value := ""
 	valueElem := val.Elem()
+
+	if valueElem.Kind() == reflect.Pointer {
+		valueElem = valueElem.Elem()
+	}
+
 	kind := valueElem.Kind()
 	key := val.Key().Name()
 
